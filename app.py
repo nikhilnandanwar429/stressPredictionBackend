@@ -15,20 +15,54 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
-CORS(app)  # Enable CORS for all domains
+# Enable CORS with specific settings
+CORS(app, resources={
+    r"/*": {
+        "origins": ["http://localhost:5173", "http://127.0.0.1:5173"],
+        "methods": ["GET", "POST", "OPTIONS"],
+        "allow_headers": ["Content-Type"]
+    }
+})
 
 # Configure upload folder
 UPLOAD_FOLDER = 'uploads'
 ALLOWED_EXTENSIONS = {'wav', 'mp3'}
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
+app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB max file size
 
 # Create uploads folder if it doesn't exist
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
+# Define custom metrics for model loading
+def precision(y_true, y_pred):
+    true_positives = tf.reduce_sum(tf.round(tf.clip_by_value(y_true * y_pred, 0, 1)))
+    predicted_positives = tf.reduce_sum(tf.round(tf.clip_by_value(y_pred, 0, 1)))
+    precision = true_positives / (predicted_positives + tf.keras.backend.epsilon())
+    return precision
+
+def recall(y_true, y_pred):
+    true_positives = tf.reduce_sum(tf.round(tf.clip_by_value(y_true * y_pred, 0, 1)))
+    possible_positives = tf.reduce_sum(tf.round(tf.clip_by_value(y_true, 0, 1)))
+    recall = true_positives / (possible_positives + tf.keras.backend.epsilon())
+    return recall
+
+def fscore(y_true, y_pred):
+    if tf.reduce_sum(tf.round(tf.clip_by_value(y_true, 0, 1))) == 0:
+        return 0
+    p = precision(y_true, y_pred)
+    r = recall(y_true, y_pred)
+    f_score = 2 * (p * r) / (p + r + tf.keras.backend.epsilon())
+    return f_score
+
 # Load the model at startup
-model_path = os.path.join(os.path.dirname(__file__), "stressDetect.h5")
+model_path = os.path.join(os.path.dirname(__file__), "Data_noiseNshift.h5")
 try:
-    loaded_model = tf.keras.models.load_model(model_path)
+    custom_objects = {
+        'precision': precision,
+        'recall': recall,
+        'fscore': fscore
+    }
+    loaded_model = tf.keras.models.load_model(model_path, custom_objects=custom_objects)
     logger.info("Model loaded successfully")
     print('Model input shape:', loaded_model.input_shape)
 except Exception as e:
@@ -38,7 +72,7 @@ except Exception as e:
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
-def load_and_resample(audio_path, target_sr=22050, duration=None, offset=0.3):
+def load_and_resample(audio_path, target_sr=22050, duration=3, offset=0.5):
     """
     Load and resample audio file
     """
@@ -49,7 +83,7 @@ def load_and_resample(audio_path, target_sr=22050, duration=None, offset=0.3):
         logger.error(f"Error loading audio: {str(e)}")
         return None, None
 
-def process_single_audio(audio_path, target_sr=22050, duration=None, offset=0.3):
+def process_single_audio(audio_path, target_sr=22050, duration=3, offset=0.5):
     """
     Process audio file and extract features
     """
@@ -58,16 +92,18 @@ def process_single_audio(audio_path, target_sr=22050, duration=None, offset=0.3)
         if X is None or sample_rate is None:
             return None
 
-        # Extract 1 MFCC feature, pad/truncate to 259 frames
+        # Extract MFCC features - using same parameters as training
         mfccs = librosa.feature.mfcc(y=X, sr=sample_rate, n_mfcc=1)
-        desired_frames = 259
-        if mfccs.shape[1] < desired_frames:
-            pad_width = desired_frames - mfccs.shape[1]
-            mfccs = np.pad(mfccs, ((0,0),(0,pad_width)), mode='constant')
+        
+        # Ensure we have exactly 259 time steps
+        if mfccs.shape[1] < 259:
+            pad_width = 259 - mfccs.shape[1]
+            mfccs = np.pad(mfccs, ((0,0), (0,pad_width)), mode='constant')
         else:
-            mfccs = mfccs[:, :desired_frames]
-        # Now mfccs shape is (1, 259)
-        mfccs = mfccs.T  # shape (259, 1)
+            mfccs = mfccs[:, :259]
+        
+        # Reshape to (259, 1) as expected by the model
+        mfccs = mfccs.T  # Now shape is (259, 1)
         return mfccs
     except Exception as e:
         logger.error(f"Error processing audio: {str(e)}")
@@ -98,9 +134,8 @@ def predict_stress():
             features = process_single_audio(filepath)
             
             if features is not None:
-                # Reshape the features to match model input shape
-                features = np.expand_dims(features, axis=0)  # Add batch dimension
-                features = np.expand_dims(features, axis=2)  # Add channel dimension
+                # Add batch dimension only - shape will be (1, 259, 1)
+                features = np.expand_dims(features, axis=0)
                 
                 # Make prediction
                 predictions = loaded_model.predict(features, verbose=0)
@@ -130,4 +165,4 @@ def predict_stress():
     return jsonify({'error': 'Invalid file type'}), 400
 
 if __name__ == '__main__':
-    app.run(debug=True)
+    app.run(host='127.0.0.1', port=5000, debug=True)
