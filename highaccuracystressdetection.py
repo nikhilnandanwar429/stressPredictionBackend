@@ -60,7 +60,7 @@ drive.mount('/content/drive')
 # Please edit according to your directory change.
 dir_list = os.listdir('/content/drive/MyDrive/Datasets/RAVDESS/01_audio/')
 dir_list.sort()
-print (dir_list)
+# print (dir_list)
 
 # Create DataFrame for Data intel
 data_df = pd.DataFrame(columns=['path', 'source', 'actor', 'gender',
@@ -101,13 +101,13 @@ for i in dir_list:
             data_df.loc[count] = [path, src, actor, gender, intensity, statement, repeat, stress]
             count += 1
 
-print (len(data_df))
+# print (len(data_df))
 data_df.head(25)
 
 """## Plotting the audio file's waveform and its spectrogram"""
 
 filename = data_df.path[1021]
-print (filename)
+# print (filename)
 
 samples, sample_rate = librosa.load(filename)
 sample_rate, samples
@@ -304,7 +304,7 @@ data_df['label'] = label3_list
 #data_df['label'] = label8_list
 data_df.head()
 
-print (data_df.label.value_counts().keys())
+# print (data_df.label.value_counts().keys())
 
 # Plotting the stress distribution
 
@@ -350,10 +350,10 @@ data2_df = data2_df[data2_df.actor != 21]
 data2_df = data2_df[data2_df.actor != 22]
 data2_df = data2_df[data2_df.actor != 23].reset_index(drop=True)
 data2_df = data2_df[data2_df.actor != 24].reset_index(drop=True)
-print (len(data2_df))
+# print (len(data2_df))
 data2_df.head(50)
 
-print (len(data3_df))
+# print (len(data3_df))
 data3_df.head(80)
 
 """## Analysing Features of audio files using librosa"""
@@ -679,7 +679,7 @@ target_names = np.unique(combined_labels).tolist()
 
 
 # Print classification report
-print(classification_report(y_true_labels, y_pred, target_names=target_names))
+# print(classification_report(y_true_labels, y_pred, target_names=target_names))
 
 # prompt: make a colorful confusion matrix
 
@@ -768,12 +768,12 @@ from tensorflow.keras.initializers import glorot_uniform
 
 # Change the filename to match the saved model
 loaded_model = tf.keras.models.load_model("/content/Data_noiseNshift.h5", custom_objects={'GlorotUniform': glorot_uniform()})
-print("Loaded model from disk")
+# print("Loaded model from disk")
 
 # evaluate loaded model on test data
 loaded_model.compile(loss='categorical_crossentropy', optimizer='adam', metrics=['accuracy'])
 score = loaded_model.evaluate(x_testcnn, y_test, verbose=0)
-print("%s: %.2f%%" % (loaded_model.metrics_names[1], score[1]*100))
+# print("%s: %.2f%%" % (loaded_model.metrics_names[1], score[1]*100))
 
 """## Predicting stresss on the test data"""
 
@@ -807,7 +807,7 @@ preds1
 
 abc = preds1.astype(int).flatten()
 
-print(abc)
+# print(abc)
 
 predictions = (lb.inverse_transform((abc)))
 

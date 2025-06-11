@@ -1,4 +1,3 @@
-# prompt: write a code to give input to content/Data_noiseNshift.h5 as audio
 
 from IPython.display import Audio
 import numpy as np
@@ -18,11 +17,12 @@ app = Flask(__name__)
 # Enable CORS with specific settings
 CORS(app, resources={
     r"/*": {
-        "origins": ["http://localhost:5173", "http://127.0.0.1:5173"],
+        "origins": ["http://localhost:5174", "http://127.0.0.1:5174"],
         "methods": ["GET", "POST", "OPTIONS"],
         "allow_headers": ["Content-Type"]
     }
 })
+
 
 # Configure upload folder
 UPLOAD_FOLDER = 'uploads'
@@ -64,13 +64,16 @@ try:
     }
     loaded_model = tf.keras.models.load_model(model_path, custom_objects=custom_objects)
     logger.info("Model loaded successfully")
-    print('Model input shape:', loaded_model.input_shape)
+    # print('Model input shape:', loaded_model.input_shape)
 except Exception as e:
     logger.error(f"Error loading model: {str(e)}")
     loaded_model = None
 
-def allowed_file(filename):
-    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+def allowed_file(file):
+    if (file.filename == 'blob'):
+        return True
+    else:
+        return '.' in file.filename and file.filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
 def load_and_resample(audio_path, target_sr=22050, duration=3, offset=0.5):
     """
@@ -88,10 +91,12 @@ def process_single_audio(audio_path, target_sr=22050, duration=3, offset=0.5):
     Process audio file and extract features
     """
     try:
+        # print("STARTED");
         X, sample_rate = load_and_resample(audio_path, target_sr=target_sr, duration=duration, offset=offset)
         if X is None or sample_rate is None:
             return None
 
+        # print("ENDED");
         # Extract MFCC features - using same parameters as training
         mfccs = librosa.feature.mfcc(y=X, sr=sample_rate, n_mfcc=1)
         
@@ -104,6 +109,7 @@ def process_single_audio(audio_path, target_sr=22050, duration=3, offset=0.5):
         
         # Reshape to (259, 1) as expected by the model
         mfccs = mfccs.T  # Now shape is (259, 1)
+        print("MFCC");
         return mfccs
     except Exception as e:
         logger.error(f"Error processing audio: {str(e)}")
@@ -111,6 +117,7 @@ def process_single_audio(audio_path, target_sr=22050, duration=3, offset=0.5):
 
 @app.route('/predict', methods=['POST'])
 def predict_stress():
+    # print("req",request.files)
     if loaded_model is None:
         logger.error("Model not loaded properly")
         return jsonify({'error': 'Model not loaded properly'}), 500
@@ -124,18 +131,21 @@ def predict_stress():
         logger.error("No selected file")
         return jsonify({'error': 'No selected file'}), 400
     
-    if file and allowed_file(file.filename):
+    # print("Passed");
+    if file and allowed_file(file):
         filename = secure_filename(file.filename)
-        filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+        filepath = os.path.join(app.config['UPLOAD_FOLDER'], f"{filename}+{np.random.randint(1,10000)}")
         file.save(filepath)
         
         try:
             # Process the audio file
             features = process_single_audio(filepath)
+            # print("features",features);
             
             if features is not None:
                 # Add batch dimension only - shape will be (1, 259, 1)
                 features = np.expand_dims(features, axis=0)
+                # print("success if");
                 
                 # Make prediction
                 predictions = loaded_model.predict(features, verbose=0)
@@ -146,7 +156,7 @@ def predict_stress():
                 # Clean up the uploaded file
                 os.remove(filepath)
                 
-                logger.info(f"Successfully processed audio and made prediction: {predicted_class}")
+                # logger.info(f"Successfully processed audio and made prediction: {predicted_class}")
                 return jsonify({
                     'predicted_class': int(predicted_class),
                     'prediction_probabilities': predictions[0].tolist()
@@ -161,7 +171,7 @@ def predict_stress():
                 os.remove(filepath)
             return jsonify({'error': str(e)}), 500
             
-    logger.error("Invalid file type")
+    # logger.error("Invalid file type")
     return jsonify({'error': 'Invalid file type'}), 400
 
 if __name__ == '__main__':
