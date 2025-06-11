@@ -17,7 +17,7 @@ app = Flask(__name__)
 # Enable CORS with specific settings
 CORS(app, resources={
     r"/*": {
-        "origins": ["http://localhost:5174", "http://127.0.0.1:5174"],
+        "origins": ["http://localhost:5174", "http://127.0.0.1:5174", "https://stress-prediction-pi.vercel.app"],
         "methods": ["GET", "POST", "OPTIONS"],
         "allow_headers": ["Content-Type"]
     }
@@ -175,4 +175,4 @@ def predict_stress():
     return jsonify({'error': 'Invalid file type'}), 400
 
 if __name__ == '__main__':
-    app.run(host='127.0.0.1', port=5000, debug=True)
+    app.run(debug=False, host='0.0.0.0', port=int(os.environ.get("PORT", 5000)))
